@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:tls="http://www.mulesoft.org/schema/mule/tls" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:scripting="http://www.mulesoft.org/schema/mule/scripting" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:graphql="http://www.mulesoft.org/schema/mule/graphql" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd 
+http://www.mulesoft.org/schema/mule/graphql http://www.mulesoft.org/schema/mule/graphql/current/mule-graphql.xsd
+http://www.mulesoft.org/schema/mule/scripting http://www.mulesoft.org/schema/mule/scripting/current/mule-scripting.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/tls http://www.mulesoft.org/schema/mule/tls/current/mule-tls.xsd">
+    <http:listener-config name="pandemic-solutions-api-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>  
+    <apikit:config name="pandemic-solutions-api-config" api="resource::7c024cf3-b7a9-4f04-bf28-cc9776aa6a67:pandemic-solutions-api:1.0.6:raml:zip:pandemic-solutions-api.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <!-- <graphql:config name="Graphql_Config" doc:name="Graphql Config" doc:id="90f183c3-e582-46ec-bc4d-3a8515ec705c" configName="mulegraphql" schemaLocation="schema/schema.graphqls" /> -->
+    <flow name="pandemic-solutions-api-main"> 
+        <http:listener config-ref="pandemic-solutions-api-httpListenerConfig" path="/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers> 
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body><![CDATA[#[payload]]]></http:body>
+                <http:headers><![CDATA[#[vars.outboundHeaders default {}]]]></http:headers>
+            </http:error-response>
+        </http:listener>
+        <apikit:router config-ref="pandemic-solutions-api-config" />
+        <!-- <graphql:router doc:name="Router" doc:id="86bf9df2-01fb-45f5-94f7-1764b1db2a5e" config-ref="Graphql_Config" payload="#[payload]"/> -->
+    </flow>
+    <flow name="get:\covid-19:pandemic-solutions-api-config">
+        <!-- <graphql:graphql-field-resolver doc:name="Graphql field resolver" doc:id="8944adb9-819a-4287-bf7a-1109b83cebc2" config-ref="Graphql_Config" fieldName="covid" />
+        <scripting:execute doc:name="Execute" doc:id="c6940d7e-81c2-4570-bc52-11dfe26de202" engine="groovy">
+            <scripting:code ><![CDATA[payload = ['params' : attributes.getArguments()]]]></scripting:code>
+        </scripting:execute> -->
+        <http:request method="GET" doc:name="Request" doc:id="171e3c29-383b-4310-9a0c-42be05feca58" url="https://disease.sh/v3/covid-19/all"/>
+        <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	
+	"cases": payload.cases,
+	"active": payload.active,
+	"recovered": payload.recovered,
+	"deaths" : payload.deaths
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <logger level="INFO" doc:name="Logger" doc:id="30be3e68-7baf-4250-b463-bdd3a16c53a5" message="Covid-19 details : #[payload]"/>
+    </flow>
+    <flow name="get:\covid-19\countries\(country):pandemic-solutions-api-config">
+        <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core">
+            <ee:variables>
+                <ee:set-variable variableName="country"><![CDATA[attributes.uriParams.'country']]></ee:set-variable>
+                <ee:set-variable variableName="state"><![CDATA[%dw 2.0
+output application/java
+---
+
+	attributes.queryParams.state
+]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <http:request method="GET" doc:name="Request" doc:id="0f66caf7-80a3-49ad-8b76-a73fb59573f9" url="https://disease.sh/v3/covid-19/gov/{country}">
+            <http:uri-params ><![CDATA[#[output application/java
+---
+{
+	"country" : vars.country
+}]]]></http:uri-params>
+        </http:request>
+        <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+if ( isEmpty(vars.state) ) {
+	
+	"cases": payload.total.cases,
+	"active": payload.total.active,
+	"recovered": payload.total.recovered,
+	"deaths" : payload.total.deaths
+}
+
+else 
+
+ 
+( payload.states filter($.state == vars.state) map (obj, indexofObj) ->
+
+{
+	"cases": obj.cases,
+	"active": obj.active,
+	"recovered": obj.recovered,
+	"deaths": obj.deaths,
+}	)]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <logger level="INFO" doc:name="Logger" doc:id="8710e31a-1bec-4115-8759-186a580228c9" message="Covid-19 details : #[payload]"/>
+    </flow>
+    <flow name="get:\status:pandemic-solutions-api-config">
+        <logger level="INFO" message="get:\status:pandemic-solutions-api-config" />
+    </flow>
+    
+      <flow name="get:\covid-19\certificate\download:pandemic-solutions-api-config">
+        <ee:transform doc:name="Transform Message" doc:id="6a03a1f9-a04a-4eae-82f6-84d90f1d886e" >
+            <ee:message >
+            </ee:message>
+            <ee:variables >
+                <ee:set-variable variableName="token" ><![CDATA[%dw 2.0
+output application/java
+---
+"Bearer " ++ attributes.queryParams.token]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <http:request method="GET" doc:name="Request" doc:id="cd43f6c1-6302-4d43-b7fc-2aee399fdc48" url="https://cdn-api.co-vin.in/api/v2/registration/certificate/public/download">
+            <http:headers ><![CDATA[#[output application/java
+---
+{
+	"Authorization" : vars.token
+}]]]></http:headers>
+            <http:query-params ><![CDATA[#[output application/java
+---
+{
+	"beneficiary_reference_id" : attributes.queryParams.beneficiary_id
+}]]]></http:query-params>
+        </http:request>
+        <logger level="INFO" message="Certificate Downloaded : #[payload]" />
+    </flow>
+    <flow name="get:\covid-19\vaccinationCenters:pandemic-solutions-api-config">
+        <http:request method="GET" doc:name="Request" doc:id="8334898c-217d-40f3-8003-36b3c506c963" url="https://cdn-api.co-vin.in/api/v2/appointment/sessions/public/findByPin">
+            <http:query-params ><![CDATA[#[output application/java
+---
+{
+	"date" : attributes.queryParams.date,
+	"pincode" : attributes.queryParams.pincode
+}]]]></http:query-params>
+        </http:request>
+        <ee:transform xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+            <ee:message>
+                <ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload.sessions map (obj,indexOfObj) ->
+{
+	center: obj.name,
+	district: obj.district_name
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <logger level="INFO" doc:name="Logger" doc:id="260d4e20-8853-49bd-89a6-acc3ae7ae8e2" message="Vaccination Centers : #[payload]"/>
+    </flow>
+    <flow name="get:\covid-19\certificate\generateOTP:pandemic-solutions-api-config">
+        <ee:transform doc:name="Transform Message" doc:id="d6234e4d-15fd-4fab-bc4b-b95716d9cf83" >
+            <ee:message >
+                <ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"mobile": attributes.queryParams.'mobile'
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <logger level="INFO" doc:name="Logger" doc:id="ae907548-f7d7-466d-860c-af032a084e11" message="Request : #[payload]"/>
+        <http:request method="POST" doc:name="Request" doc:id="074c6555-cf1a-4b24-b2b1-d7fa92178501" url="https://cdn-api.co-vin.in/api/v2/auth/public/generateOTP"/>
+        <logger level="INFO" message="OTP generated : #[payload]" />
+    </flow>
+    
+     <flow name="get:\covid-19\certificate\confirmOTP:pandemic-solutions-api-config">
+        <ee:transform doc:name="Transform Message" doc:id="023a3e35-8b7a-4cc5-a05c-30a71c264bde" >
+            <ee:message >
+            </ee:message>
+            <ee:variables >
+                <ee:set-variable variableName="otp" ><![CDATA[%dw 2.0
+import java!com::panemic::OTP
+output application/java
+---
+OTP::generate(attributes.queryParams.otp)
+]]></ee:set-variable>
+            </ee:variables>
+        </ee:transform>
+        <ee:transform doc:name="payload" doc:id="1a6595cf-1ef0-49f0-aa37-5b8a28c26aa3" >
+            <ee:message >
+                <ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+    "otp" : vars.otp,
+    "txnId" : attributes.queryParams.txnId
+}]]></ee:set-payload>
+            </ee:message>
+        </ee:transform>
+        <logger level="INFO" doc:name="Logger" doc:id="efd04e7d-ed85-471d-abd9-29216008de0f" message="Request : #[payload]"/>
+        <http:request method="POST" doc:name="Request" doc:id="7f6d8812-824e-4a39-820b-ca18838783ed" url="https://cdn-api.co-vin.in/api/v2/auth/public/confirmOTP"/>
+        <logger level="INFO" message="OTP confirmed : #[payload]" />
+    </flow>
+</mule>

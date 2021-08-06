@@ -1,0 +1,32 @@
+schema {
+	query: Query
+}
+
+type Query{
+	covid: COVID
+}
+
+type COVID {
+	updated: String
+	cases: String
+	todayCases: String
+	deaths: String
+	todayDeaths: String
+	recovered: String
+	todayRecovered: String
+	active: String
+	critical: String
+	casesPerOneMillion: String
+	deathsPerOneMillion: String
+	tests: String
+    testsPerOneMillion: String
+    population: String
+    oneCasePerPeople: String
+    oneDeathPerPeople: String
+    oneTestPerPeople: String
+    undefined: String
+    activePerOneMillion: String
+    recoveredPerOneMillion: String
+    criticalPerOneMillion: String
+    affectedCountries: String
+}
